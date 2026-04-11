@@ -1,0 +1,171 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Resolve symlinks to find the real script location
+# (handles the case where claudock is installed as a symlink in ~/.local/bin)
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+    DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+    SOURCE="$(readlink "$SOURCE")"
+    [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+
+usage() {
+    cat <<EOF
+Usage: claudock <mode> [command]
+
+Modes:
+  container  Manage the development container
+  vscode     Set up VS Code Dev Container support
+
+Container commands:
+  up     (default) Build image if needed and open a shell
+  down             Stop and remove the container
+  start            Resume a stopped container and open a shell
+  stop             Stop the container without removing it
+
+VSCode commands:
+  init  (default) Create .devcontainer/ in the current directory
+
+Options:
+  -h  Show this help message
+
+Environment variables:
+  PORT            Port of the HTTP proxy running on the host (e.g. Privoxy); forwarded into the
+                  container as HTTP_PROXY and HTTPS_PROXY via host.docker.internal (default: 8118)
+  COLIMA_PROFILE  Colima profile used for Docker GID detection; if unset, uses the default colima instance
+EOF
+}
+
+# --- shared ---
+
+setup_vars() {
+    export USER="$(id -un)"
+    export USER_UID="$(id -u)"
+    export USER_GID="$(id -g)"
+    local colima_args=()
+    [[ -n "${COLIMA_PROFILE:-}" ]] && colima_args+=(--profile="$COLIMA_PROFILE")
+    export DOCKER_GID="$(colima "${colima_args[@]}" ssh -- stat -c '%g' /var/run/docker.sock)"
+    export PORT="${PORT:-8118}"
+    export HTTP_PROXY="http://host.docker.internal:${PORT}"
+    export HTTPS_PROXY="http://host.docker.internal:${PORT}"
+    export NO_PROXY=".ru"
+    export WORKSPACE="$(pwd)"
+    export CONTAINER_NAME="$(basename "$WORKSPACE")"
+}
+
+compose() {
+    docker-compose \
+        -p "$CONTAINER_NAME" \
+        --project-directory "$SCRIPT_DIR" \
+        -f "$SCRIPT_DIR/docker-compose.yaml" \
+        "$@"
+}
+
+# --- container commands ---
+
+cmd_up() {
+    setup_vars
+    compose build
+    compose up -d
+    docker exec -it "$CONTAINER_NAME" bash
+}
+
+cmd_down() {
+    setup_vars
+    compose down
+}
+
+cmd_start() {
+    setup_vars
+    compose start
+    docker exec -it "$CONTAINER_NAME" bash
+}
+
+cmd_stop() {
+    setup_vars
+    compose stop
+}
+
+# --- vscode commands ---
+
+cmd_vscode_init() {
+    setup_vars
+
+    local devcontainer_dir="$WORKSPACE/.devcontainer"
+    if [[ -d "$devcontainer_dir" ]]; then
+        mv "$devcontainer_dir" "$WORKSPACE/.devcontainer.$(date +%Y%m%d_%H%M%S)"
+    fi
+    mkdir -p "$devcontainer_dir"
+
+    cp "$SCRIPT_DIR/Dockerfile"          "$devcontainer_dir/Dockerfile"
+    cp "$SCRIPT_DIR/docker-compose.yaml" "$devcontainer_dir/docker-compose.yaml"
+
+    cat > "$devcontainer_dir/.env" <<EOF
+CONTAINER_NAME=$CONTAINER_NAME
+USER=$USER
+USER_UID=$USER_UID
+USER_GID=$USER_GID
+DOCKER_GID=$DOCKER_GID
+WORKSPACE=$WORKSPACE
+HTTP_PROXY=$HTTP_PROXY
+HTTPS_PROXY=$HTTPS_PROXY
+NO_PROXY=$NO_PROXY
+EOF
+
+    cat > "$devcontainer_dir/devcontainer.json" <<EOF
+{
+  "name": "$CONTAINER_NAME",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "workstation",
+  "workspaceFolder": "/home/$USER/workspace",
+  "remoteUser": "$USER"
+}
+EOF
+
+    echo "Created .devcontainer/ in $WORKSPACE"
+    echo "Open this folder in VS Code and choose 'Reopen in Container'."
+}
+
+# --- dispatch ---
+
+if [[ "${1:-}" == "-h" ]]; then
+    usage
+    exit 0
+fi
+
+if [[ $# -eq 0 ]]; then
+    usage
+    exit 1
+fi
+
+MODE="$1"
+shift
+
+case "$MODE" in
+    container)
+        COMMAND="${1:-up}"
+        shift || true
+        case "$COMMAND" in
+            up)    cmd_up ;;
+            down)  cmd_down ;;
+            start) cmd_start ;;
+            stop)  cmd_stop ;;
+            *)     echo "Unknown command: $COMMAND" >&2; usage; exit 1 ;;
+        esac
+        ;;
+    vscode)
+        COMMAND="${1:-init}"
+        shift || true
+        case "$COMMAND" in
+            init)  cmd_vscode_init ;;
+            *)     echo "Unknown command: $COMMAND" >&2; usage; exit 1 ;;
+        esac
+        ;;
+    *)
+        echo "Unknown mode: $MODE" >&2
+        usage
+        exit 1
+        ;;
+esac

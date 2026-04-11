@@ -1,0 +1,21 @@
+services:
+  workstation:
+    container_name: ${CONTAINER_NAME:?}
+    stdin_open: true
+    tty: true
+    build:
+      context: .
+      args:
+        - USER=${USER:?}
+        - USER_UID=${USER_UID:?}
+        - USER_GID=${USER_GID:?}
+        - DOCKER_GID=${DOCKER_GID:?}
+        - HTTP_PROXY=${HTTP_PROXY:-}
+        - HTTPS_PROXY=${HTTPS_PROXY:-}
+        - NO_PROXY=${NO_PROXY:-}
+    environment:
+      - SSH_AUTH_SOCK=/ssh-agent
+    volumes:
+      - ${WORKSPACE:?}:/home/${USER:?}/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /run/host-services/ssh-auth.sock:/ssh-agent
