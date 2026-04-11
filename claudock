@@ -120,7 +120,16 @@ EOF
   "dockerComposeFile": "docker-compose.yaml",
   "service": "workstation",
   "workspaceFolder": "/home/$USER/workspace",
-  "remoteUser": "$USER"
+  "remoteUser": "$USER",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "vscodevim.vim",
+        "golang.go",
+        "Anthropic.claude-code"
+      ]
+    }
+  }
 }
 EOF
 
