@@ -41,18 +41,25 @@ EOF
 # --- shared ---
 
 setup_vars() {
-    export USER="$(id -un)"
-    export USER_UID="$(id -u)"
-    export USER_GID="$(id -g)"
+    USER="$(id -un)"
+    USER_UID="$(id -u)"
+    USER_GID="$(id -g)"
+    export USER USER_UID USER_GID
+
     local colima_args=()
     [[ -n "${COLIMA_PROFILE:-}" ]] && colima_args+=(--profile="$COLIMA_PROFILE")
-    export DOCKER_GID="$(colima "${colima_args[@]}" ssh -- stat -c '%g' /var/run/docker.sock)"
-    export PORT="${PORT:-8118}"
-    export HTTP_PROXY="http://host.docker.internal:${PORT}"
-    export HTTPS_PROXY="http://host.docker.internal:${PORT}"
-    export NO_PROXY=".ru"
-    export WORKSPACE="$(pwd)"
-    export CONTAINER_NAME="$(basename "$WORKSPACE")"
+    DOCKER_GID="$(colima ${colima_args[@]+"${colima_args[@]}"} ssh -- stat -c '%g' /var/run/docker.sock)"
+    export DOCKER_GID
+
+    PORT="${PORT:-8118}"
+    HTTP_PROXY="http://host.docker.internal:${PORT}"
+    HTTPS_PROXY="http://host.docker.internal:${PORT}"
+    NO_PROXY=".ru"
+    export PORT HTTP_PROXY HTTPS_PROXY NO_PROXY
+
+    WORKSPACE="$(pwd)"
+    CONTAINER_NAME="$(basename "$WORKSPACE")"
+    export WORKSPACE CONTAINER_NAME
 }
 
 compose() {
