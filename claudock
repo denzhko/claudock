@@ -131,9 +131,7 @@ EOF
   "customizations": {
     "vscode": {
       "extensions": [
-        "vscodevim.vim",
-        "golang.go",
-        "Anthropic.claude-code"
+        "golang.go"
       ]
     }
   }
